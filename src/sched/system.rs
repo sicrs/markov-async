@@ -2,7 +2,7 @@ const P_DISTRIB: [[f64; 3]; 3] = [[0.1, 0.5, 0.4], [0.2, 0.4, 0.4], [0.2, 0.4, 0
 
 pub struct System {
     pub state: SystemState,
-    values: [f64; 3],
+    pub values: [f64; 3],
     rewards: [f64; 3],
 }
 
@@ -26,7 +26,7 @@ impl System {
 
     /// NOTE: Don't forget to acquire a WriteLock on System
     /// Implements Value Iteration
-    fn calculate_values(&self, discount_factor: f64) -> [f64; 3] {
+    pub fn calculate_values(&self, discount_factor: f64) -> [f64; 3] {
         let mut buf: [f64; 3] = [0.0; 3];
 
         // iterate for each of the values

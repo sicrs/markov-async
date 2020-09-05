@@ -13,6 +13,14 @@ struct Task {
     fut: Mutex<Option<BoxFuture<'static, ()>>>,
 }
 
+impl Task {
+    fn construct(fut: BoxFuture<'static, ()>) -> Task {
+        Task {
+            fut: Mutex::new(Some(fut)),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[test]
