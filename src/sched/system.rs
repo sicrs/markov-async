@@ -17,9 +17,9 @@ impl System {
 }
 
 pub enum SystemState {
-    Idle,
-    DoQueue,
-    DoImmediate,
+    Idle = 0,
+    DoQueue = 1,
+    DoImmediate = 2,
 }
 
 struct Action(SystemState);
