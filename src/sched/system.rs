@@ -1,3 +1,5 @@
+use crate::sched::ExtState;
+
 const P_DISTRIB: [[f64; 3]; 3] = [[0.1, 0.5, 0.4], [0.2, 0.4, 0.4], [0.2, 0.4, 0.4]];
 
 pub struct System {
@@ -35,13 +37,9 @@ impl System {
                 .iter()
                 .zip(0..3) // destination node index
                 .map(|(p, idx)| p * (self.rewards[idx] + discount_factor * self.values[idx]))
-                .max_by(|a, b| a.partial_cmp(b).unwrap());
+                .max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
 
-            if let Some(valu) = val {
-                buf[_index] = *valu;
-            } else {
-                panic!("Zero length output");
-            }
+            buf[_index] = *val;
         });
 
         buf
