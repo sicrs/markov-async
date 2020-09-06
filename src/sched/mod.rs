@@ -2,7 +2,7 @@ mod system;
 
 use crate::Task;
 use crossbeam::queue::SegQueue;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use system::System;
 
 const DISCOUNT_FACTOR: f64 = 0.9;
@@ -33,7 +33,7 @@ impl Thread {
 }
 
 pub(crate) struct MarkovScheduler {
-    sys: Arc<RwLock<System>>,
+    sys: Arc<Mutex<System>>,
     q: Arc<SegQueue<Task>>,
     im: Arc<SegQueue<Task>>,
     threads: Vec<Thread>,
@@ -44,7 +44,7 @@ impl MarkovScheduler {
         let threads: Vec<Thread> = (0..num_threads).map(|_x| Thread::new()).collect();
 
         MarkovScheduler {
-            sys: Arc::new(RwLock::new(System::new([0.0, 1.0, 1.0]).init(DISCOUNT_FACTOR))),
+            sys: Arc::new(Mutex::new(System::new([0.0, 1.0, 1.0]).init(DISCOUNT_FACTOR))),
             q: Arc::new(SegQueue::new()),
             im: Arc::new(SegQueue::new()),
             threads,
@@ -61,11 +61,10 @@ impl MarkovScheduler {
         // launch main loop
         loop {
             // capture ExtState
-            let ext_state= ExtState(self.q.len(), self.im.len());
-            let action = {
-                let inner = self.sys.read().unwrap();
-                inner.decide(ext_state)
-            };
+            let ext_state = ExtState(self.q.len(), self.im.len());
+
+            let mut inner = self.sys.lock().unwrap();
+            let action = inner.decide(ext_state);
 
             let task_res = match action.0 {
                 1 => self.q.pop(),
@@ -76,12 +75,14 @@ impl MarkovScheduler {
             let task = match task_res {
                 Ok(task) => {
                     // move to next state
-                    let mut inner = self.sys.write().unwrap();
                     (*inner).state = action.0;
                     task
                 },
                 Err(_) => continue,
             };
+            
+            // release lock
+            drop(inner);
 
             let (thr, _n) = self.threads
                 .iter()
@@ -94,13 +95,13 @@ impl MarkovScheduler {
     }
 }
 
-fn update_loop(sys_ref: Arc<RwLock<System>>, q_ref: Arc<SegQueue<Task>>) -> () {
+fn update_loop(sys_ref: Arc<Mutex<System>>, q_ref: Arc<SegQueue<Task>>) -> () {
+    let mut inner = sys_ref.lock().unwrap();
     let (new_val, diff) = {
-        let inner = sys_ref.read().unwrap();
-        let n_val = (*inner).calculate_values(DISCOUNT_FACTOR);
-        let diff: f64 = n_val
+        let n_val = inner.calculate_values(DISCOUNT_FACTOR);
+        let diff: f64 =  n_val
             .iter()
-            .zip((*inner).values.iter())
+            .zip(inner.values.iter())
             .map(|(x, y)| {
                 let diff = x - y;
                 if diff < 0.0 {
@@ -114,10 +115,8 @@ fn update_loop(sys_ref: Arc<RwLock<System>>, q_ref: Arc<SegQueue<Task>>) -> () {
         (n_val, diff)
     };
 
-    {
-        let mut inner_sys = sys_ref.write().unwrap();
-        (*inner_sys).values = new_val;
-    }
+    inner.values = new_val;
+    drop(inner);
 
     // launch next value iteration
     if diff > 0.1 {
