@@ -1,2 +1,2 @@
 # Markov Async Runtime
-A simple asynchronous runtime I imagined while dreaming after I read up on Markov Decision Processes
+A simple asynchronous runtime — it's probably not as effective as work-stealing scheduling, but I just wanted to play around with the concept of MDPs after I read up about them.
