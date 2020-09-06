@@ -3,7 +3,7 @@ mod system;
 use crate::Task;
 use crossbeam::queue::SegQueue;
 use std::sync::{Arc, RwLock};
-use system::{System, SystemState};
+use system::System;
 
 const DISCOUNT_FACTOR: f64 = 0.9;
 
@@ -97,3 +97,5 @@ fn update_loop(sys_ref: Arc<RwLock<System>>, q_ref: Arc<SegQueue<Task>>) -> () {
         })));
     }
 }
+
+pub struct ExtState(usize, usize);
