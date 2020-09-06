@@ -62,4 +62,4 @@ impl System {
     }
 }
 
-pub struct Action(usize);
+pub struct Action(pub usize);

@@ -60,7 +60,36 @@ impl MarkovScheduler {
 
         // launch main loop
         loop {
-            
+            // capture ExtState
+            let ext_state= ExtState(self.q.len(), self.im.len());
+            let action = {
+                let inner = self.sys.read().unwrap();
+                inner.decide(ext_state)
+            };
+
+            let task_res = match action.0 {
+                1 => self.q.pop(),
+                2 => self.im.pop(),
+                _ => continue
+            };
+
+            let task = match task_res {
+                Ok(task) => {
+                    // move to next state
+                    let mut inner = self.sys.write().unwrap();
+                    (*inner).state = action.0;
+                    task
+                },
+                Err(_) => continue,
+            };
+
+            let (thr, _n) = self.threads
+                .iter()
+                .map(|x| (x, x.q.len()))
+                .min_by(|x, y| x.1.partial_cmp(&y.1).unwrap())
+                .unwrap();
+
+            thr.q.push(task);
         }
     }
 }
