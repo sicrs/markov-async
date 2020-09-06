@@ -90,7 +90,7 @@ fn update_loop(sys_ref: Arc<RwLock<System>>, q_ref: Arc<SegQueue<Task>>) -> () {
         (*inner_sys).values = new_val;
     }
 
-    // launch next value iterationc
+    // launch next value iteration
     if diff > 0.1 {
         q_ref.clone().push(Task::construct(Box::pin(async move {
             update_loop(sys_ref, q_ref)
