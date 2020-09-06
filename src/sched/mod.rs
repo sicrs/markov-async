@@ -33,7 +33,7 @@ impl Thread {
 }
 
 pub(crate) struct MarkovScheduler {
-    sys: RwLock<System>,
+    sys: Arc<RwLock<System>>,
     q: Arc<SegQueue<Task>>,
     im: Arc<SegQueue<Task>>,
     threads: Vec<Thread>,
@@ -44,7 +44,7 @@ impl MarkovScheduler {
         let threads: Vec<Thread> = (0..num_threads).map(|_x| Thread::new()).collect();
 
         MarkovScheduler {
-            sys: RwLock::new(System::new([0.0, 1.0, 1.0]).init(DISCOUNT_FACTOR)),
+            sys: Arc::new(RwLock::new(System::new([0.0, 1.0, 1.0]).init(DISCOUNT_FACTOR))),
             q: Arc::new(SegQueue::new()),
             im: Arc::new(SegQueue::new()),
             threads,
@@ -52,20 +52,48 @@ impl MarkovScheduler {
     }
 
     pub fn launch(&mut self) {
-        let sys_ref: &mut RwLock<System> = &mut (self.sys);
-        self.q.push(Task::construct(Box::pin(async move {
-            let new_val = {
-                let inner = sys_ref.read().unwrap();
-                (*inner).calculate_values(DISCOUNT_FACTOR)
-            };
-            
-            {
-                let inner_sys = sys_ref.write().unwrap();
-                (*inner_sys).values = new_val;
-            }
+        let sys_ref = self.sys.clone();
+        let q_ref = self.q.clone();
+        self.q.push(Task::construct(Box::pin( async move {
+            update_loop(sys_ref, q_ref)
         })));
+
+        // launch main loop
         loop {
             
         }
+    }
+}
+
+fn update_loop(sys_ref: Arc<RwLock<System>>, q_ref: Arc<SegQueue<Task>>) -> () {
+    let (new_val, diff) = {
+        let inner = sys_ref.read().unwrap();
+        let n_val = (*inner).calculate_values(DISCOUNT_FACTOR);
+        let diff: f64 = n_val
+            .iter()
+            .zip((*inner).values.iter())
+            .map(|(x, y)| {
+                let diff = x - y;
+                if diff < 0.0 {
+                    diff * -1.0
+                } else {
+                    diff
+                }
+            })
+            .sum();
+
+        (n_val, diff)
+    };
+
+    {
+        let mut inner_sys = sys_ref.write().unwrap();
+        (*inner_sys).values = new_val;
+    }
+
+    // launch next value iterationc
+    if diff > 0.1 {
+        q_ref.clone().push(Task::construct(Box::pin(async move {
+            update_loop(sys_ref, q_ref)
+        })));
     }
 }
