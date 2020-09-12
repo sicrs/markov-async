@@ -16,11 +16,15 @@ fn main() {
     let probability_matrix: Matrix = matrix(c!(0.1, 0.5, 0.4, 0.2, 0.4, 0.4, 0.2, 0.4, 0.4), 3, 3, Row);
     let pm_arc = Arc::new(probability_matrix);
 
+    let mut value_m: Option<Arc<Mutex<Matrix>>> = None;
     let mut durations: Vec<Duration> = Vec::new();
     let start = Instant::now();
     (0..num_iter).for_each(|_x| {
-        let dur = run_iter(pm_arc.clone());
+        let (val, dur) = run_iter(pm_arc.clone());
         durations.push(dur);
+        if num_iter == 1 {
+            value_m = Some(val);
+        }
     });
     let elapsed = start.elapsed();
     let total: Duration = durations.iter().sum();
@@ -29,10 +33,14 @@ fn main() {
 
     println!("--- Summary ---");
     println!("Average duration: {:?}", avg);
-    println!("Time to complete {} iterations: {:?}", num_iter, elapsed);
+    println!("Time to complete {} iterations: {:?}\n", num_iter, elapsed);
+    if num_iter == 1 {
+        let inner = Arc::try_unwrap(value_m.unwrap()).unwrap();
+        inner.into_inner().unwrap().write("values.csv").unwrap();
+    }
 }
 
-fn run_iter(p_m: Arc<Matrix>) -> std::time::Duration {
+fn run_iter(p_m: Arc<Matrix>) -> (Arc<Mutex<Matrix>>, std::time::Duration) {
     let value_arc = Arc::new(Mutex::new(matrix(c!(0.0, 0.0, 0.0), 1, 3, Row)));
     let time_start = Instant::now();
     let handle = value_iter_thread(value_arc.clone(), p_m, 0.9);
@@ -40,7 +48,8 @@ fn run_iter(p_m: Arc<Matrix>) -> std::time::Duration {
     handle.join().unwrap();
     let elapsed = time_start.elapsed();
     println!("Elapsed time: {:?}", elapsed);
-    elapsed
+    
+    (value_arc, elapsed)
 }
 
 fn value_iter_thread(value_matrix: Arc<Mutex<Matrix>>, probability_matrix: Arc<Matrix>, discount_factor: f64) -> JoinHandle<()> {
