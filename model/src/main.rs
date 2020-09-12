@@ -1,58 +1,78 @@
+use argh::FromArgs;
 use peroxide::*;
 use peroxide::prelude::*;
 use std::sync::{ Arc, Mutex };
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+#[derive(FromArgs)]
+/// Calculate values for the Markov network
+struct Calculate {
+    #[argh(switch, short = 'v')]
+    /// verbosity
+    verbose: bool,
+    #[argh(option, short = 'o')]
+    /// where to save CSV encoded values
+    output: Option<String>,
+    #[argh(switch, short = 'V')]
+    /// version
+    version: bool,
+    #[argh(option, short = 'i', default = "1")]
+    /// number of iterations
+    iter: usize,
+}
+
 fn main() {
-    let args = std::env::args();
-    let arg: Vec<String> = args.collect();
-    let num_iter = if arg.len() == 1 {
-        1 as usize
+    let c: Calculate = argh::from_env();
+
+    if c.version {
+        println!("{}", env!("GIT_HASH"));
     } else {
-        arg[1].parse::<usize>().unwrap()
-    };
-    
-    let probability_matrix: Matrix = matrix(c!(0.1, 0.5, 0.4, 0.2, 0.4, 0.4, 0.2, 0.4, 0.4), 3, 3, Row);
-    let pm_arc = Arc::new(probability_matrix);
+        let probability_matrix: Matrix = matrix(c!(0.1, 0.5, 0.4, 0.2, 0.4, 0.4, 0.2, 0.4, 0.4), 3, 3, Row);
+        let pm_arc = Arc::new(probability_matrix);
+        
+        let mut value_m: Option<Arc<Mutex<Matrix>>> = None;
+        let mut durations: Vec<Duration> = Vec::new();
+        let start = Instant::now();
+        (0..c.iter).for_each(|_x| {
+            let (val, dur) = run_iter(pm_arc.clone(), c.verbose);
+            durations.push(dur);
+            if c.iter == 1 {
+                value_m = Some(val);
+            }
+        });
 
-    let mut value_m: Option<Arc<Mutex<Matrix>>> = None;
-    let mut durations: Vec<Duration> = Vec::new();
-    let start = Instant::now();
-    (0..num_iter).for_each(|_x| {
-        let (val, dur) = run_iter(pm_arc.clone());
-        durations.push(dur);
-        if num_iter == 1 {
-            value_m = Some(val);
+        let elapsed = start.elapsed();
+        let total: Duration = durations.iter().sum();
+        let avg_duration = total / (durations.len() as u32);
+        println!("--- Summary ---");
+        println!("Average duration: {:?}", avg_duration);
+        println!("Time to complete {} iterations: {:?}\n", c.iter, elapsed);
+
+        if let Some(path) = c.output {
+            if c.iter == 1 {
+                let inner = Arc::try_unwrap(value_m.unwrap()).unwrap();
+                inner.into_inner().unwrap().write(&path).unwrap();
+            }
         }
-    });
-    let elapsed = start.elapsed();
-    let total: Duration = durations.iter().sum();
-
-    let avg = total / (durations.len() as u32);
-
-    println!("--- Summary ---");
-    println!("Average duration: {:?}", avg);
-    println!("Time to complete {} iterations: {:?}\n", num_iter, elapsed);
-    if num_iter == 1 {
-        let inner = Arc::try_unwrap(value_m.unwrap()).unwrap();
-        inner.into_inner().unwrap().write("values.csv").unwrap();
     }
 }
 
-fn run_iter(p_m: Arc<Matrix>) -> (Arc<Mutex<Matrix>>, std::time::Duration) {
+fn run_iter(p_m: Arc<Matrix>, verbose: bool) -> (Arc<Mutex<Matrix>>, std::time::Duration) {
     let value_arc = Arc::new(Mutex::new(matrix(c!(0.0, 0.0, 0.0), 1, 3, Row)));
     let time_start = Instant::now();
-    let handle = value_iter_thread(value_arc.clone(), p_m, 0.9);
+    let handle = value_iter_thread(value_arc.clone(), p_m, 0.9, verbose);
 
     handle.join().unwrap();
     let elapsed = time_start.elapsed();
-    println!("Elapsed time: {:?}", elapsed);
+    if verbose {
+        println!("Elapsed time: {:?}", elapsed);   
+    }
     
     (value_arc, elapsed)
 }
 
-fn value_iter_thread(value_matrix: Arc<Mutex<Matrix>>, probability_matrix: Arc<Matrix>, discount_factor: f64) -> JoinHandle<()> {
+fn value_iter_thread(value_matrix: Arc<Mutex<Matrix>>, probability_matrix: Arc<Matrix>, discount_factor: f64, verbose: bool) -> JoinHandle<()> {
     let handle = std::thread::spawn(move || {
         let v_m = value_matrix;
         let p_m = probability_matrix;
@@ -61,11 +81,11 @@ fn value_iter_thread(value_matrix: Arc<Mutex<Matrix>>, probability_matrix: Arc<M
 
         let mut i: usize = 0;
         loop {
-            if let Ok(_) = std::env::var("DBG") {
+            if verbose {
                 println!("--- Iteration {} ---", i);    
             }
-            let mut diff = value_iter(v_m.clone(), p_m.clone(), d_f, rew.clone());
-            if let Ok(_) = std::env::var("DBG") {
+            let mut diff = value_iter(v_m.clone(), p_m.clone(), d_f, rew.clone(), verbose);
+            if verbose {
                 println!("Mean diff: {}", diff);
             }
 
@@ -83,7 +103,7 @@ fn value_iter_thread(value_matrix: Arc<Mutex<Matrix>>, probability_matrix: Arc<M
     handle
 }
 
-fn value_iter(value_matrix: Arc<Mutex<Matrix>>, p_distrib: Arc<Matrix>, disc_fac: f64, reward: Arc<Matrix>) -> f64 {
+fn value_iter(value_matrix: Arc<Mutex<Matrix>>, p_distrib: Arc<Matrix>, disc_fac: f64, reward: Arc<Matrix>, verbose: bool) -> f64 {
     let mut inner = value_matrix.lock().unwrap();
     let mut calc_result: Vec<f64> = Vec::new();
     (0..3).for_each(|index| {
@@ -104,7 +124,7 @@ fn value_iter(value_matrix: Arc<Mutex<Matrix>>, p_distrib: Arc<Matrix>, disc_fac
     };
 
     *inner = new;
-    if let Ok(_) = std::env::var("DBG") {
+    if verbose {
         inner.print();
     }
 
