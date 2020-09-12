@@ -1,7 +1,7 @@
 use argh::FromArgs;
-use peroxide::*;
 use peroxide::prelude::*;
-use std::sync::{ Arc, Mutex };
+use peroxide::*;
+use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -28,9 +28,10 @@ fn main() {
     if c.version {
         println!("{}", env!("GIT_HASH"));
     } else {
-        let probability_matrix: Matrix = matrix(c!(0.1, 0.5, 0.4, 0.2, 0.4, 0.4, 0.2, 0.4, 0.4), 3, 3, Row);
+        let probability_matrix: Matrix =
+            matrix(c!(0.1, 0.5, 0.4, 0.2, 0.4, 0.4, 0.2, 0.4, 0.4), 3, 3, Row);
         let pm_arc = Arc::new(probability_matrix);
-        
+
         let mut value_m: Option<Arc<Mutex<Matrix>>> = None;
         let mut durations: Vec<Duration> = Vec::new();
         let start = Instant::now();
@@ -66,13 +67,18 @@ fn run_iter(p_m: Arc<Matrix>, verbose: bool) -> (Arc<Mutex<Matrix>>, std::time::
     handle.join().unwrap();
     let elapsed = time_start.elapsed();
     if verbose {
-        println!("Elapsed time: {:?}", elapsed);   
+        println!("Elapsed time: {:?}", elapsed);
     }
-    
+
     (value_arc, elapsed)
 }
 
-fn value_iter_thread(value_matrix: Arc<Mutex<Matrix>>, probability_matrix: Arc<Matrix>, discount_factor: f64, verbose: bool) -> JoinHandle<()> {
+fn value_iter_thread(
+    value_matrix: Arc<Mutex<Matrix>>,
+    probability_matrix: Arc<Matrix>,
+    discount_factor: f64,
+    verbose: bool,
+) -> JoinHandle<()> {
     let handle = std::thread::spawn(move || {
         let v_m = value_matrix;
         let p_m = probability_matrix;
@@ -82,7 +88,7 @@ fn value_iter_thread(value_matrix: Arc<Mutex<Matrix>>, probability_matrix: Arc<M
         let mut i: usize = 0;
         loop {
             if verbose {
-                println!("--- Iteration {} ---", i);    
+                println!("--- Iteration {} ---", i);
             }
             let mut diff = value_iter(v_m.clone(), p_m.clone(), d_f, rew.clone(), verbose);
             if verbose {
@@ -96,14 +102,20 @@ fn value_iter_thread(value_matrix: Arc<Mutex<Matrix>>, probability_matrix: Arc<M
 
             i += 1;
         }
-        
+
         println!("Finished converging at {} iterations", i);
     });
 
     handle
 }
 
-fn value_iter(value_matrix: Arc<Mutex<Matrix>>, p_distrib: Arc<Matrix>, disc_fac: f64, reward: Arc<Matrix>, verbose: bool) -> f64 {
+fn value_iter(
+    value_matrix: Arc<Mutex<Matrix>>,
+    p_distrib: Arc<Matrix>,
+    disc_fac: f64,
+    reward: Arc<Matrix>,
+    verbose: bool,
+) -> f64 {
     let mut inner = value_matrix.lock().unwrap();
     let mut calc_result: Vec<f64> = Vec::new();
     (0..3).for_each(|index| {
@@ -115,7 +127,7 @@ fn value_iter(value_matrix: Arc<Mutex<Matrix>>, p_distrib: Arc<Matrix>, disc_fac
         calc_result.push(max(prod.row(0)));
     });
 
-    let new = matrix(calc_result,1, 3, Row);
+    let new = matrix(calc_result, 1, 3, Row);
     let diff: Matrix = &(*inner) - &new;
     let diff = {
         let inner = diff.row(0);
