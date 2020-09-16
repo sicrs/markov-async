@@ -1,39 +1,43 @@
 #![allow(dead_code)]
+use logistic::Logistic;
 use peroxide::fuga::rbind;
 use peroxide::prelude::*;
 use peroxide::*;
 use train::Train;
 
-pub trait Logistic {
-    fn func(&self, input: &Matrix) -> Matrix;
-    fn deriv(&self, input: &Matrix) -> Matrix;
-}
+pub mod logistic {
+    use peroxide::prelude::*;
+    pub trait Logistic {
+        fn func(&self, input: &Matrix) -> Matrix;
+        fn deriv(&self, input: &Matrix) -> Matrix;
+    }
 
-// helper function
-fn apply_elementwise<F: Fn(&f64) -> f64>(input: &Matrix, f: F) -> Matrix {
-    let (n_row, n_col) = (&input.row, &input.col);
-    let mut out: Matrix = zeros(*n_row, *n_col);
-    for i in 0..*n_row {
-        for j in 0..*n_col {
-            out[(i, j)] = f(&out[(i, j)]);
+    // helper function
+    fn apply_elementwise<F: Fn(&f64) -> f64>(input: &Matrix, f: F) -> Matrix {
+        let (n_row, n_col) = (&input.row, &input.col);
+        let mut out: Matrix = zeros(*n_row, *n_col);
+        for i in 0..*n_row {
+            for j in 0..*n_col {
+                out[(i, j)] = f(&out[(i, j)]);
+            }
         }
+        out
     }
-    out
-}
 
-pub struct Sigmoid();
+    pub struct Sigmoid();
 
-impl Logistic for Sigmoid {
-    fn func(&self, input: &Matrix) -> Matrix {
-        apply_elementwise(input, |x| 1f64 / (1f64 + std::f64::consts::E.powf(-*x)))
-    }
-    fn deriv(&self, input: &Matrix) -> Matrix {
-        let sgm = self.func(&input);
-        let ones = matrix(vec![1f64; sgm.row * sgm.col], sgm.row, sgm.col, Row);
-        let sub = &ones - &sgm;
-        drop(ones);
+    impl Logistic for Sigmoid {
+        fn func(&self, input: &Matrix) -> Matrix {
+            apply_elementwise(input, |x| 1f64 / (1f64 + std::f64::consts::E.powf(-*x)))
+        }
+        fn deriv(&self, input: &Matrix) -> Matrix {
+            let sgm = self.func(&input);
+            let ones = matrix(vec![1f64; sgm.row * sgm.col], sgm.row, sgm.col, Row);
+            let sub = &ones - &sgm;
+            drop(ones);
 
-        sgm.hadamard(&sub)
+            sgm.hadamard(&sub)
+        }
     }
 }
 
