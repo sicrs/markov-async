@@ -1,6 +1,8 @@
 #![allow(dead_code)]
+use peroxide::fuga::rbind;
 use peroxide::prelude::*;
 use peroxide::*;
+use train::Train;
 
 pub trait Logistic {
     fn func(&self, input: &Matrix) -> Matrix;
@@ -9,8 +11,7 @@ pub trait Logistic {
 
 // helper function
 fn apply_elementwise<F: Fn(&f64) -> f64>(input: &Matrix, f: F) -> Matrix {
-    let n_row = &input.row;
-    let n_col = &input.col;
+    let (n_row, n_col) = (&input.row, &input.col);
     let mut out: Matrix = zeros(*n_row, *n_col);
     for i in 0..*n_row {
         for j in 0..*n_col {
@@ -37,11 +38,14 @@ impl Logistic for Sigmoid {
 }
 
 pub mod train {
-    pub trait Train {}
+    use super::Matrix;
+    pub trait Train {
+        fn backprop(&self, input: Matrix, output: Matrix) -> (Vec<Matrix>, Vec<Matrix>);
+    }
 }
 
-pub struct Network<Log: Logistic> {
-    logistic: Box<Log>,
+pub struct Network<L: Logistic> {
+    logistic: Box<L>,
     weights: [Matrix; 3],
     biases: [Matrix; 3],
 }
@@ -106,17 +110,95 @@ impl<L: Logistic> Network<L> {
     }
 
     // returns a tuple of accumulated inputs and activations (in that order)
-    pub fn accumulate_activ_input(&self, input: Matrix) -> (Vec<Matrix>, Vec<Matrix>) {
-        let mut inputs: Vec<Matrix> = Vec::new();
+    pub fn accumulate_zs_activ(&self, input: Matrix) -> (Vec<Matrix>, Vec<Matrix>) {
+        let mut zs: Vec<Matrix> = Vec::new();
         let mut activations: Vec<Matrix> = Vec::new();
 
-        inputs.push(input);
+        activations.push(input);
         (0..3).for_each(|index| {
-            let (out, actv) = self.feed(&inputs[inputs.len() - 1], index);
-            inputs.push(out);
+            let (out, actv) = self.feed(&activations[activations.len() - 1], index);
+            //let (out, actv) = self.feed(&inputs[inputs.len() - 1], index);
+            zs.push(out);
             activations.push(actv);
         });
 
-        (inputs, activations)
+        (zs, activations)
+    }
+}
+
+impl<L: Logistic> Train for Network<L> {
+    fn backprop(&self, input: Matrix, output: Matrix) -> (Vec<Matrix>, Vec<Matrix>) {
+        // accumulate zs and activations
+        let (zs, activations) = self.accumulate_zs_activ(input);
+
+        // traverse backwards
+        let mut rev_nabla_bias: Vec<Matrix> = Vec::new();
+        let mut rev_nabla_weights: Vec<Matrix> = Vec::new();
+
+        rev_nabla_bias.push({
+            let deriv: Matrix = self.logistic.deriv(&zs[zs.len() - 1]);
+            let diff: Matrix = &activations[activations.len() - 1] - &output;
+            assert!(deriv.row == diff.row);
+            assert!(deriv.col == diff.col);
+            diff.hadamard(&deriv)
+        });
+
+        rev_nabla_weights.push({
+            let delta = rev_nabla_bias[0].as_slice();
+            let actv = activations[activations.len() - 2].transpose();
+            let mut accumulator: Option<Matrix> = None;
+
+            delta.iter().for_each(|multiplier| {
+                let clone = actv.mul_scalar(*multiplier);
+                if let Some(inner) = accumulator.take() {
+                    accumulator = Some(rbind(inner, clone));
+                } else {
+                    accumulator = Some(clone);
+                }
+            });
+
+            accumulator.take().unwrap()
+        });
+
+        for i in 0..self.weights.len() {
+            let layer = i + 1;
+
+            rev_nabla_bias.push({
+                // latest bias
+                let prev_delta_bias = &rev_nabla_bias[rev_nabla_bias.len() - 1];
+                let weights = &self.weights[self.weights.len() - layer];
+                let log_prime = self.logistic.deriv(&zs[zs.len() - (layer + 1)]);
+
+                let dot: Matrix = weights * prev_delta_bias;
+
+                // TODO: remove checks
+                assert!(log_prime.row == dot.row);
+                assert!(log_prime.col == dot.col);
+
+                dot.hadamard(&log_prime)
+            });
+
+            rev_nabla_weights.push({
+                let delta = &rev_nabla_bias[rev_nabla_bias.len() - 1];
+                let actv = activations[activations.len() - (layer + 1)].transpose();
+                let mut accumulator: Option<Matrix> = None;
+
+                delta.as_slice().iter().for_each(|multiplier| {
+                    let clone = actv.mul_scalar(*multiplier);
+                    if let Some(inner) = accumulator.take() {
+                        accumulator = Some(rbind(inner, clone));
+                    } else {
+                        accumulator = Some(clone);
+                    }
+                });
+
+                accumulator.take().unwrap()
+            });
+        }
+
+        (
+            rev_nabla_bias.into_iter().rev().collect::<Vec<Matrix>>(),
+            rev_nabla_weights.into_iter().rev().collect::<Vec<Matrix>>(),
+        )
     }
 }
