@@ -113,7 +113,7 @@ impl<L: Logistic> Network<L> {
         (result, activation)
     }
 
-    // returns a tuple of accumulated inputs and activations (in that order)
+    /// Returns a tuple of accumulated inputs and activations (in that order)
     pub fn accumulate_zs_activ(&self, input: Matrix) -> (Vec<Matrix>, Vec<Matrix>) {
         let mut zs: Vec<Matrix> = Vec::new();
         let mut activations: Vec<Matrix> = Vec::new();
@@ -181,11 +181,11 @@ impl<L: Logistic> Train for Network<L> {
             });
 
             rev_nabla_weights.push({
-                let delta = &rev_nabla_bias[rev_nabla_bias.len() - 1];
+                let delta = rev_nabla_bias[rev_nabla_bias.len() - 1].as_slice();
                 let actv = activations[activations.len() - (layer + 1)].transpose();
                 let mut accumulator: Option<Matrix> = None;
 
-                delta.as_slice().iter().for_each(|multiplier| {
+                delta.iter().for_each(|multiplier| {
                     let clone = actv.mul_scalar(*multiplier);
                     if let Some(inner) = accumulator.take() {
                         accumulator = Some(rbind(inner, clone));
