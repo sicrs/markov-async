@@ -32,9 +32,7 @@ pub mod logistic {
         }
         fn deriv(&self, input: &Matrix) -> Matrix {
             let sgm = self.func(&input);
-            let ones = matrix(vec![1f64; sgm.row * sgm.col], sgm.row, sgm.col, Row);
-            let sub = &ones - &sgm;
-            drop(ones);
+            let sub = 1f64 - &sgm;
 
             sgm.hadamard(&sub)
         }
