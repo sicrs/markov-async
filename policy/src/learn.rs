@@ -7,6 +7,39 @@ pub trait Logistic {
     fn deriv(&self, input: &Matrix) -> Matrix;
 }
 
+// helper function
+fn apply_elementwise<F: Fn(&f64) -> f64>(input: &Matrix, f: F) -> Matrix {
+    let n_row = &input.row;
+    let n_col = &input.col;
+    let mut out: Matrix = zeros(*n_row, *n_col);
+    for i in 0..*n_row {
+        for j in 0..*n_col {
+            out[(i, j)] = f(&out[(i, j)]);
+        }
+    }
+    out
+}
+
+pub struct Sigmoid();
+
+impl Logistic for Sigmoid {
+    fn func(&self, input: &Matrix) -> Matrix {
+        apply_elementwise(input, |x| 1f64 / (1f64 + std::f64::consts::E.powf(-*x)))
+    }
+    fn deriv(&self, input: &Matrix) -> Matrix {
+        let sgm = self.func(&input);
+        let ones = matrix(vec![1f64; sgm.row * sgm.col], sgm.row, sgm.col, Row);
+        let sub = &ones - &sgm;
+        drop(ones);
+
+        sgm.hadamard(&sub)
+    }
+}
+
+pub mod train {
+    pub trait Train {}
+}
+
 pub struct Network<Log: Logistic> {
     logistic: Box<Log>,
     weights: [Matrix; 3],
@@ -66,7 +99,7 @@ impl<L: Logistic> Network<L> {
     pub fn feed(&self, input: &Matrix, layer: usize) -> (Matrix, Matrix) {
         let weighted_in: Matrix = &self.weights[layer] + input;
         let result: Matrix = &weighted_in + &self.biases[layer];
-        
+
         let activation = self.logistic.func(&result);
 
         (result, activation)
@@ -79,7 +112,7 @@ impl<L: Logistic> Network<L> {
 
         inputs.push(input);
         (0..3).for_each(|index| {
-            let (out, actv) = self.feed(&inputs[inputs.len() - 1], index); 
+            let (out, actv) = self.feed(&inputs[inputs.len() - 1], index);
             inputs.push(out);
             activations.push(actv);
         });
