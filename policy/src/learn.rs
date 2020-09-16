@@ -160,9 +160,7 @@ impl<L: Logistic> Train for Network<L> {
             accumulator.take().unwrap()
         });
 
-        for i in 0..self.weights.len() {
-            let layer = i + 1;
-
+        for layer in 1..(self.weights.len() + 1) {
             rev_nabla_bias.push({
                 // latest bias
                 let prev_delta_bias = &rev_nabla_bias[rev_nabla_bias.len() - 1];
