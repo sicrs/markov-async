@@ -1,48 +1,76 @@
 #![allow(dead_code)]
+pub mod logistic;
+pub mod train;
+
 use logistic::Logistic;
 use peroxide::fuga::rbind;
 use peroxide::prelude::*;
 use peroxide::*;
 use train::Train;
 
-pub mod logistic {
-    use peroxide::prelude::*;
-    pub trait Logistic {
-        fn func(&self, input: &Matrix) -> Matrix;
-        fn deriv(&self, input: &Matrix) -> Matrix;
-    }
+struct Core {
+    weights: Vec<Matrix>,
+    biases: Vec<Matrix>,
+}
 
-    // helper function
-    fn apply_elementwise<F: Fn(&f64) -> f64>(input: &Matrix, f: F) -> Matrix {
-        let (n_row, n_col) = (&input.row, &input.col);
-        let mut out: Matrix = zeros(*n_row, *n_col);
-        for i in 0..*n_row {
-            for j in 0..*n_col {
-                out[(i, j)] = f(&out[(i, j)]);
-            }
+impl Core {
+    pub fn new(layout: &[usize]) -> Core {
+        let layout_len = layout.len();
+        let mut weights: Vec<Matrix> = Vec::new();
+        let mut biases: Vec<Matrix> = Vec::new();
+
+        for i in 1..(layout_len - 1) {
+            let input_len = layout[i - 1];
+            let output_len = layout[i];
+
+            weights.push(matrix(
+                vec![1f64; input_len * output_len],
+                output_len,
+                input_len,
+                Row,
+            ));
+
+            biases.push(matrix(vec![0f64; output_len], output_len, 1, Row));
         }
-        out
-    }
 
-    pub struct Sigmoid();
-
-    impl Logistic for Sigmoid {
-        fn func(&self, input: &Matrix) -> Matrix {
-            apply_elementwise(input, |x| 1f64 / (1f64 + std::f64::consts::E.powf(-*x)))
-        }
-        fn deriv(&self, input: &Matrix) -> Matrix {
-            let sgm = self.func(&input);
-            let sub = 1f64 - &sgm;
-
-            sgm.hadamard(&sub)
-        }
+        Core { weights, biases }
     }
 }
 
-pub mod train {
-    use super::Matrix;
-    pub trait Train {
-        fn backprop(&self, input: Matrix, output: Matrix) -> (Vec<Matrix>, Vec<Matrix>);
+pub fn construct_input_matrix(weighted_values: Matrix, n_im: usize, n_q: usize) -> Matrix {
+    let w_v_vec = weighted_values.row(0);
+    drop(weighted_values);
+
+    matrix(c!(vec![n_im as f64, n_q as f64]; w_v_vec), 5, 1, Row)
+}
+
+pub struct Learner<T> {
+    core: Core,
+    logistic: Box<dyn Logistic>,
+    lrn_algo: Box<T>,
+}
+
+pub struct Runner {
+    core: Core,
+    logistic: Box<dyn Logistic>,
+}
+
+impl Runner {
+    pub fn passthrough(&self, input: Matrix) -> Matrix {
+        let mut accumulator = input;
+
+        for index in 0..self.core.weights.len() {
+            let weighted_in: Matrix = &self.core.weights[index] * &accumulator;
+            let biased: Matrix = &weighted_in + &self.core.biases[index];
+            drop(weighted_in);
+
+            let result = self.logistic.func(&biased);
+            drop(biased);
+
+            accumulator = result;
+        }
+
+        accumulator
     }
 }
 
@@ -77,7 +105,7 @@ impl<L: Logistic> Network<L> {
     pub fn passthrough(&self, input: Matrix) -> Matrix {
         let mut accumulator = input;
 
-        for index in 0..3 {
+        for index in 0..self.weights.len() {
             let weighted_in: Matrix = &self.weights[index] * &accumulator;
             let result: Matrix = &weighted_in + &self.biases[index];
             drop(weighted_in);
@@ -103,7 +131,7 @@ impl<L: Logistic> Network<L> {
     }
 
     pub fn feed(&self, input: &Matrix, layer: usize) -> (Matrix, Matrix) {
-        let weighted_in: Matrix = &self.weights[layer] + input;
+        let weighted_in: Matrix = &self.weights[layer] * input;
         let result: Matrix = &weighted_in + &self.biases[layer];
 
         let activation = self.logistic.func(&result);
@@ -117,7 +145,7 @@ impl<L: Logistic> Network<L> {
         let mut activations: Vec<Matrix> = Vec::new();
 
         activations.push(input);
-        (0..3).for_each(|index| {
+        (0..self.weights.len()).for_each(|index| {
             let (out, actv) = self.feed(&activations[activations.len() - 1], index);
             //let (out, actv) = self.feed(&inputs[inputs.len() - 1], index);
             zs.push(out);
