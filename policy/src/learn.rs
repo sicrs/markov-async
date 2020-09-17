@@ -162,14 +162,18 @@ impl<L: Logistic> Train for Network<L> {
             accumulator.take().unwrap()
         });
 
-        for layer in 1..(self.weights.len() + 1) {
+        for layer in (0..(self.weights.len() - 1)).rev() {
             rev_nabla_bias.push({
                 // latest bias
                 let prev_delta_bias = &rev_nabla_bias[rev_nabla_bias.len() - 1];
-                let weights = &self.weights[self.weights.len() - layer];
-                let log_prime = self.logistic.deriv(&zs[zs.len() - (layer + 1)]);
+                let weight = self.weights[layer].transpose();
+                let log_prime = {
+                    let actv = &activations[layer + 1];
+                    let sub = 1f64 - actv;
+                    actv.hadamard(&sub)
+                };
 
-                let dot: Matrix = weights * prev_delta_bias;
+                let dot = &weight * prev_delta_bias;
 
                 // TODO: remove checks
                 assert!(log_prime.row == dot.row);
@@ -180,7 +184,7 @@ impl<L: Logistic> Train for Network<L> {
 
             rev_nabla_weights.push({
                 let delta = rev_nabla_bias[rev_nabla_bias.len() - 1].as_slice();
-                let actv = activations[activations.len() - (layer + 1)].transpose();
+                let actv = activations[layer].transpose();
                 let mut accumulator: Option<Matrix> = None;
 
                 delta.iter().for_each(|multiplier| {
@@ -188,7 +192,7 @@ impl<L: Logistic> Train for Network<L> {
                     if let Some(inner) = accumulator.take() {
                         accumulator = Some(rbind(inner, clone));
                     } else {
-                        accumulator = Some(clone);
+                        accumulator = Some(clone)
                     }
                 });
 
