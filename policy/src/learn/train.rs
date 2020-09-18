@@ -37,26 +37,63 @@ impl Accumulator {
         let new_count = self.count + 1;
         let (b, w) = a;
 
-        let new_biases = self.biases.iter().zip(b.iter()).map(|(x, y)| {
-            let scaled = x.mul_scalar(self.count as f64);
-            let res = &scaled + y;
-            drop(scaled);
+        if self.biases.len() == 0 {
+            assert!(self.biases.len() == self.weights.len());
+            self.count = 1;
+            self.biases = b;
+            self.weights = w;
+        } else {
+            let new_biases = self.biases.iter().zip(b.iter()).map(|(x, y)| {
+                let scaled = x.mul_scalar(self.count as f64);
+                let res: Matrix = &scaled + y;
+                drop(scaled);
 
-            res / (new_count as f64)
+                res / (new_count as f64)
+            }).collect::<Vec<Matrix>>();
+            drop(b);
+
+            let new_weights = self.weights.iter().zip(w.iter()).map(|(x, y)| {
+                let scaled = x.mul_scalar(self.count as f64);
+                let res: Matrix = &scaled + y;
+                drop(scaled);
+
+                res / (new_count as f64)
+            }).collect::<Vec<Matrix>>();
+            drop(w);
+
+            self.biases = new_biases;
+            self.weights = new_weights;
+            self.count = new_count;
+        }
+    }
+
+    fn merge(&mut self, other: Self) {
+        let other_biases = other.biases;
+        let other_weights = other.weights;
+        let other_count = other.count;
+        let new_count = (self.count + other.count) as f64;
+
+        let new_biases = self.biases.iter().zip(other_biases.iter()).map(|(x, y)| {
+            let x_scaled = x.mul_scalar(self.count as f64);
+            let y_scaled = y.mul_scalar(other_count as f64);
+
+            let res = x_scaled + y_scaled;
+
+            res / new_count
         }).collect::<Vec<Matrix>>();
-        drop(b);
 
-        let new_weights = self.weights.iter().zip(w.iter()).map(|(x, y)| {
-            let scaled = x.mul_scalar(self.count as f64);
-            let res: Matrix = &scaled + y;
-            drop(scaled);
+        let new_weights = self.weights.iter().zip(other_weights.iter()).map(|(x, y)| {
+            let x_scaled = x.mul_scalar(self.count as f64);
+            let y_scaled = y.mul_scalar(other_count as f64);
 
-            res / (new_count as f64)
+            let res = x_scaled + y_scaled;
+
+            res / new_count
         }).collect::<Vec<Matrix>>();
-        drop(w);
 
         self.biases = new_biases;
         self.weights = new_weights;
+        self.count = new_count as usize;
     }
 }
 
