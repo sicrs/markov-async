@@ -33,37 +33,23 @@ impl Accumulator {
         }
     }
 
-    fn apply_bias_weight_set(&mut self, a: (Vec<Matrix>, Vec<Matrix>))  {
-        let new_count = self.count + 1;
-        let (b, w) = a;
+    fn from_tuple(a: (Vec<Matrix>, Vec<Matrix>)) -> Accumulator {
+        Accumulator {
+            biases: a.0,
+            weights: a.1,
+            count: 1,
+        }
+    }
 
+    fn apply_bias_weight_set(&mut self, a: (Vec<Matrix>, Vec<Matrix>))  {
         if self.biases.len() == 0 {
             assert!(self.biases.len() == self.weights.len());
             self.count = 1;
-            self.biases = b;
-            self.weights = w;
+            self.biases = a.0;
+            self.weights = a.1;
         } else {
-            let new_biases = self.biases.iter().zip(b.iter()).map(|(x, y)| {
-                let scaled = x.mul_scalar(self.count as f64);
-                let res: Matrix = &scaled + y;
-                drop(scaled);
-
-                res / (new_count as f64)
-            }).collect::<Vec<Matrix>>();
-            drop(b);
-
-            let new_weights = self.weights.iter().zip(w.iter()).map(|(x, y)| {
-                let scaled = x.mul_scalar(self.count as f64);
-                let res: Matrix = &scaled + y;
-                drop(scaled);
-
-                res / (new_count as f64)
-            }).collect::<Vec<Matrix>>();
-            drop(w);
-
-            self.biases = new_biases;
-            self.weights = new_weights;
-            self.count = new_count;
+            let to_merge = Accumulator::from_tuple(a);
+            self.merge(to_merge);
         }
     }
 
