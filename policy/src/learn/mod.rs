@@ -6,9 +6,9 @@ use logistic::Logistic;
 use peroxide::fuga::rbind;
 use peroxide::prelude::*;
 use peroxide::*;
-use train::Train;
+use train::{Train, TrainingAlgo};
 
-struct Core {
+pub struct Core {
     weights: Vec<Matrix>,
     biases: Vec<Matrix>,
 }
@@ -35,7 +35,37 @@ impl Core {
 
         Core { weights, biases }
     }
+
+    pub fn as_builder(self) -> Builder {
+        Builder {
+            core: self,
+            logistic: Box::new(logistic::Sigmoid()),
+        }
+    }
 }
+
+pub struct Builder {
+    core: Core,
+    logistic: Box<dyn Logistic>,
+}
+
+impl Builder {
+    pub fn learner<T: TrainingAlgo>(self, algo: T) -> Learner<T> {
+        Learner {
+            core: self.core,
+            logistic: self.logistic,
+            lrn_algo: Box::new(algo),
+        }
+    }
+
+    pub fn runner(self) -> Runner {
+        Runner {
+            core: self.core,
+            logistic: self.logistic,
+        }
+    }
+}
+
 
 pub fn construct_input_matrix(weighted_values: Matrix, n_im: usize, n_q: usize) -> Matrix {
     let w_v_vec = weighted_values.row(0);
